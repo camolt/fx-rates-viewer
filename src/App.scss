@@ -1,0 +1,39 @@
+@import '~antd/dist/antd.css';
+
+body {
+    // padding: 0 2rem;
+}
+
+.App {
+
+    .container {
+        margin: auto;
+        width: 100%;
+        padding: 16px;;
+
+        @media (min-width: 576px) {
+            max-width: 540px;
+        }
+
+        @media (min-width: 768px) {
+            max-width: 720px;
+        }
+
+        @media (min-width: 992px) {
+            max-width: 960px
+        }
+
+        @media (min-width: 1200px) {
+            max-width: 1170px;
+            padding: 32px;
+        }
+
+        @media (min-width: 1430px) {
+            max-width: 1370px;
+        }
+
+        @media (min-width: 1630px) {
+            max-width: 1570px;
+        }
+    }
+}
