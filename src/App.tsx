@@ -1,116 +1,264 @@
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC, useEffect, useState, useRef } from 'react';
 import './App.scss';
-import { ApiMethodType, request } from './utils';
-import { Table, Select, Menu, Spin, InputNumber } from 'antd';
+import { ApiMethodType, request, requestPayload } from './utils';
+import { Table, Select, Menu, Spin, InputNumber, Form } from 'antd';
 
 interface LatestResponse {
     rates: {
         [key: string]: number;
     }
+    date?: string;
 };
 
+const daysBack = 7;
 
 const App: FC<{ props?: any }> = ({ props }) => {
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [current, setcurrent] = useState<string>('');
-    const [latest, setLatest] = useState<LatestResponse>();
-    console.log(`props`, props);
+    const [current, setCurrent] = useState<string>('0');
+    const [ratesInCurrent, setRatesInCurrent] = useState<any>('');
+    const [historicalRates, setHistoricalRates] = useState<any>({});
+    const [amount, setAmount] = useState<number>(0);
+    const [masterCurrency, setMasterCurrency] = useState<string>('EUR');
+    const [secondCurrency, setSecondCurrency] = useState<string>('');
+    const [latest, setLatest] = useState<LatestResponse>({ rates: {} });
+    const prevProps = usePrevious({ secondCurrency });
 
-    useEffect(() => {
-        async function fetchMyAPI() {
-            let res: LatestResponse = await request('latest', { method: ApiMethodType.GET })
-            console.log(`response`, res);
-            setLatest(res);
-        }
-
-        fetchMyAPI();
-    }, []);
-
-
-    const columns = [
-        {
-            title: 'Currency',
-            dataIndex: 'currency',
-            key: 'currency',
-            render: (text: String) => <a>{text}</a>,
-        },
-        {
-            title: 'Rate',
-            dataIndex: 'rate',
-            key: 'rate',
-        },
-        {
-            title: 'Amount',
-            dataIndex: 'amount',
-            key: 'amount',
-        },
-    ];
-
-    const data = latest && Object.keys(latest.rates).map((key, idx) => {
-        return {
-            key: idx,
-            title: key,
-            rate: latest.rates[key],
-        }
-    });
-
-    const handleClick = () => {
-
+    function usePrevious(value: any) {
+        const ref = useRef();
+        useEffect(() => {
+            ref.current = value;
+        });
+        return ref.current;
     }
 
     const { Option } = Select;
 
-    function onChange(value: any) {
-        console.log(`selected ${value}`);
+    async function fetchMyAPI(path: string, payload?: requestPayload) {
+        let res: LatestResponse = await request(path, { method: ApiMethodType.GET }, payload)
+        return res;
+    }
+
+    // componentDidMount
+    useEffect(() => {
+        fetchMyAPI('latest').then((res) => {
+            setLatest(res);
+            setRatesInCurrent(res.rates);
+        });
+    }, []);
+
+    // Historical api endpoint trigger
+    useEffect(() => {
+        const today = new Date();
+        if (current === '1' && secondCurrency && (prevProps as any).secondCurrency !== secondCurrency) {
+            const promises: any = [];
+            [...Array(daysBack).keys()].slice(1).forEach(day => {
+                const dayInThePast = (new Date()).setDate(today.getDate() - day);
+                const dateParsed = new Date(dayInThePast).toISOString().split('T')[0];
+                promises.push(
+                    fetchMyAPI(dateParsed, {
+                        symbols: `${secondCurrency}`,
+                    })
+                );
+
+                Promise.all(promises).then((resArr) => {
+                    const historicalRatesObj: { [key: string]: any } = {};
+                    resArr.forEach((res: any, idx) => {
+                        historicalRatesObj[res.date] = res.rates;
+                    });
+                    setHistoricalRates({ ...historicalRatesObj });
+                });
+
+            })
+        }
+    }, [current, secondCurrency]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    function handleNavClick(e: any) {
+        setCurrent(e.key);
     }
 
     function onAmountChange(value: any) {
-        console.log(`onAmountChange ${value}`);
+        setAmount(value);
     }
 
-    function onBlur() {
-        console.log('blur');
-    }
+    const getCurrentRatesScreen = () => {
+        const currentData = latest && Object.keys(ratesInCurrent).map((key, idx) => {
+            return {
+                key: idx,
+                currency: key,
+                rate: ratesInCurrent[key],
+                'amount': amount * ratesInCurrent[key]
+            }
+        });
 
-    function onFocus() {
-        console.log('focus');
-    }
+        const getColumns = () => {
+            const cols = [
+                {
+                    title: 'Currency',
+                    dataIndex: 'currency',
+                    key: 'currency',
+                    render: (text: String) => text,
+                },
+                {
+                    title: `Rate`,
+                    dataIndex: 'rate',
+                    key: 'rate',
+                    render: (number: String) => Number(number).toPrecision(4)
+                }
+            ];
 
-    function onSearch(val: any) {
-        console.log('search:', val);
-    }
+            amount > 0 && cols.push({
+                title: 'Amount in foreign currency',
+                dataIndex: 'amount',
+                key: 'amount',
+                render: (number: String) => Number(number).toLocaleString()
+            });
 
+            return cols;
+        }
 
-    return (
-        <div className="App">
-            <Menu onClick={handleClick} selectedKeys={[current]} mode="horizontal">
-                <Menu.Item key="mail" >
-                    Current rates
-                </Menu.Item>
-                <Menu.Item key="app" >
-                    Historical rates
-                    </Menu.Item>
-            </Menu>
-            <div className="container">
-                <InputNumber min={1} max={10} defaultValue={3} onChange={onAmountChange} />
+        return <Form
+            initialValues={{
+                masterCurrency: masterCurrency,
+                amount: amount
+            }}
+        >
+            <Form.Item
+                label="Master currency"
+                name="masterCurrency"
+            >
                 <Select
                     showSearch
                     style={{ width: 200 }}
                     placeholder="Select a currency"
                     optionFilterProp="children"
-                    onChange={onChange}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
-                    onSearch={onSearch}
-                    filterOption={(input, option) =>
-                        option?.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                    }
+                    onChange={(val) => {
+                        setMasterCurrency(val as string);
+                        const recalculatedRates: { [key: string]: number } = {};
+                        const newCurrencyToEuro = latest?.rates[val] / 1;
+
+                        latest?.rates && Object.keys(latest?.rates).forEach((rate, idx) => {
+                            recalculatedRates[rate] = latest?.rates[rate] / newCurrencyToEuro;
+                        });
+                        console.log(`recalculatedRates`, recalculatedRates);
+                        setRatesInCurrent(recalculatedRates);
+                    }}
+                    value={masterCurrency}
                 >
-                    <Option value="jack">Jack</Option>
-                    <Option value="lucy">Lucy</Option>
-                    <Option value="tom">Tom</Option>
+                    {latest?.rates && Object.keys(latest.rates).map((currency, idx) => {
+                        return <Option value={currency} key={`${currency}Option`}>{currency}</Option>
+                    })}
                 </Select>
-                {data ? <Table columns={columns} dataSource={data} /> : <Spin size="large" />}
+            </Form.Item>
+            {masterCurrency && <Form.Item
+                label={`Amount in ${masterCurrency}`}
+                name="amount"
+            >
+                <InputNumber min={0} onChange={onAmountChange} value={amount} />
+            </Form.Item>}
+            {currentData && masterCurrency && <Table columns={getColumns()} dataSource={currentData} />}
+            {!currentData && <Spin size="large" />}
+        </Form>;
+    }
+
+    const getHistoricalRateScreen = () => {
+        console.log(`secondCurrency`, secondCurrency)
+        const historicalData = historicalRates && Object.keys(historicalRates).map((key, idx) => {
+            return {
+                key: idx,
+                date: key,
+                rate: historicalRates[key][secondCurrency] || '',
+            }
+        });
+
+        const getColumns = () => {
+            const cols = [
+                {
+                    title: 'Date',
+                    dataIndex: 'date',
+                    key: 'date',
+                    render: (text: String) => text,
+                }
+            ];
+
+            if (secondCurrency) {
+                cols.push(
+                    {
+                        title: `${secondCurrency}`,
+                        dataIndex: 'rate',
+                        key: 'rate',
+                        render: (number: String) => Number(number).toPrecision(4)
+                    }
+                )
+            }
+
+            return cols;
+        }
+        return <Form
+            initialValues={{ masterCurrency: masterCurrency, secondCurrency: secondCurrency }}
+        >
+            <Form.Item
+                label="Master currency"
+                name="masterCurrency"
+            >
+                <Select
+                    showSearch
+                    style={{ width: 200 }}
+                    placeholder="Select a currency"
+                    optionFilterProp="children"
+                    onChange={(val) => {
+                        setMasterCurrency(val as string);
+                        const recalculatedRates: { [key: string]: number } = {};
+                        const newCurrencyToEuro = latest?.rates[val] / 1;
+
+                        latest?.rates && Object.keys(latest?.rates).forEach((rate, idx) => {
+                            recalculatedRates[rate] = latest?.rates[rate] / newCurrencyToEuro;
+                        });
+                        console.log(`recalculatedRates`, recalculatedRates);
+                        setRatesInCurrent(recalculatedRates);
+                    }}
+                    value={masterCurrency}
+                >
+                    {latest?.rates && Object.keys(latest.rates).map((currency, idx) => {
+                        return <Option value={currency} key={`${currency}Option`}>{currency}</Option>
+                    })}
+                </Select>
+            </Form.Item>
+            <Form.Item
+                label="Second currency"
+                name="secondCurrency"
+            >
+                <Select
+                    showSearch
+                    style={{ width: 200 }}
+                    placeholder="Select a 2nd currency"
+                    optionFilterProp="children"
+                    onChange={(val) => {
+                        setSecondCurrency(val as string);
+                    }}
+                    value={secondCurrency}
+                >
+                    {latest?.rates && Object.keys(latest.rates).map((currency, idx) => {
+                        return <Option value={currency} key={`${currency}Option`}>{currency}</Option>
+                    })}
+                </Select>
+            </Form.Item>
+            {historicalRates && secondCurrency && <Table columns={getColumns()} dataSource={historicalData} />}
+        </Form>;
+    }
+
+    return (
+        <div className="App">
+            <Menu onClick={handleNavClick} selectedKeys={[current]} mode="horizontal">
+                <Menu.Item key="0" >
+                    Current rates
+                </Menu.Item>
+                <Menu.Item key="1" >
+                    Historical rates
+                    </Menu.Item>
+            </Menu>
+            <div className="container">
+                {current === '0' && getCurrentRatesScreen()}
+                {current === '1' && getHistoricalRateScreen()}
+
             </div>
         </div>
     );

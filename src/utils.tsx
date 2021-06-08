@@ -10,7 +10,7 @@ export enum ApiMethodType {
 }
 
 //  eslint-disable-next-line @typescript-eslint/no-explicit-any
-type requestPayload = Record<string, any>;
+export type requestPayload = Record<string, any>;
 
 //  eslint-disable-next-line @typescript-eslint/no-explicit-any
 type requestOptions = Record<string, any> & {
@@ -25,7 +25,7 @@ export async function request<T> (
 ): Promise<T> {
     const isGet = options.method === ApiMethodType.GET;
     const parameters = new URLSearchParams(payload);
-    const query = isGet && !!payload ? `?${parameters}` : '';
+    const query = isGet && !!payload ? `&${parameters}` : '';
 
     const init: RequestInit = {
         method: options.method,
